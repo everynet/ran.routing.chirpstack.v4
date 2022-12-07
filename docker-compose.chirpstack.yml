@@ -1,0 +1,77 @@
+version: '3'
+
+x-logging:
+  &default-logging
+  driver: 'json-file'
+  options:
+    max-size: "100m"
+    max-file: "1"
+
+services:
+
+  chirpstack:
+    image: chirpstack/chirpstack:4.0.3
+    command: -c /etc/chirpstack
+    restart: unless-stopped
+    volumes:
+      - ./docker-data/chirpstack:/etc/chirpstack
+      # - ./lorawan-devices:/opt/lorawan-devices
+    depends_on:
+      - postgresql
+      - mosquitto
+      - redis
+    environment:
+      - MQTT_BROKER_HOST=mosquitto
+      - REDIS_HOST=redis
+      - POSTGRESQL_HOST=postgresql
+    ports:
+      - 8080:8080
+    logging: *default-logging
+
+  chirpstack-gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4.0.1
+    ports:
+      - 1700:1700/udp
+    volumes:
+      - ./docker-data/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    logging: *default-logging
+
+  postgresql:
+    image: postgres:10.20-alpine
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+    volumes:
+      - ./docker-data/postgresql/initdb:/docker-entrypoint-initdb.d
+      - postgresqldata:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging: *default-logging
+
+  redis:
+    image: redis:6-alpine
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    logging: *default-logging
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - 1883:1883
+    volumes:
+      - ./docker-data/eclipse-mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  postgresqldata:
+  redisdata:
+
+networks:
+  default:
+    name: chirpstack
