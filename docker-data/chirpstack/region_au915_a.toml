@@ -1,12 +1,12 @@
-# This file contains an example EU868 configuration.
+# This file contains an example AU915 example (channels 0-7 + 64).
 [[regions]]
 
-  # Name is an user-defined identifier for this region.
-  name="eu868"
+  # Name is an use-defined identifier for this region.
+  name="au915_a"
 
   # Common-name refers to the common-name of this region as defined by
   # the LoRa Alliance.
-  common_name="EU868"
+  common_name="AU915"
 
 
   # Gateway configuration.
@@ -17,7 +17,7 @@
     # If enabled, gateways can only be used by devices under the same tenant.
     force_gws_private=false
 
-
+    
     # Gateway backend configuration.
     [regions.gateway.backend]
 
@@ -28,10 +28,10 @@
       [regions.gateway.backend.mqtt]
 
         # Event topic template.
-        event_topic="eu868/gateway/+/event/+"
+        event_topic="au915_a/gateway/+/event/+"
 
         # Command topic template.
-        command_topic="eu868/gateway/{{ gateway_id }}/command/{{ command }}"
+        command_topic="au915_a/gateway/{{ gateway_id }}/command/{{ command }}"
 
         # MQTT server (e.g. scheme://host:port where scheme is tcp, ssl or ws)
         server="tcp://mosquitto:1883"
@@ -86,58 +86,52 @@
     # ChirpStack Concentratord daemon. In any other case, this configuration 
     # is ignored.
     [[regions.gateway.channels]]
-      frequency=868100000
+      frequency=915200000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=868300000
+      frequency=915400000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=868500000
+      frequency=915600000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=867100000
+      frequency=915800000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=867500000
+      frequency=916000000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=867700000
+      frequency=916200000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
 
     [[regions.gateway.channels]]
-      frequency=867900000
+      frequency=916400000
       bandwidth=125000
       modulation="LORA"
       spreading_factors=[7, 8, 9, 10, 11, 12]
-  
+
     [[regions.gateway.channels]]
-      frequency=867300000
-      bandwidth=250000
-      modulation="LORA"
-      spreading_factors=[7]
-    
-    [[regions.gateway.channels]]
-      frequency=867700000
+      frequency=916600000
       bandwidth=125000
-      modulation="FSK"
-      datarate=50000
+      modulation="LORA"
+      spreading_factors=[7, 8, 9, 10, 11, 12]
 
 
   # Region specific network configuration.
@@ -166,10 +160,10 @@
     rx1_dr_offset=0
 
     # RX2 data-rate
-    rx2_dr=0
+    rx2_dr=8
 
     # RX2 frequency (Hz)
-    rx2_frequency=869525000
+    rx2_frequency=923300000
 
     # Prefer RX2 on RX1 data-rate less than.
     #
@@ -204,6 +198,13 @@
     # Maximum data-rate.
     max_dr=5
 
+    # Enabled uplink channels.
+    #
+    # Use this when ony a sub-set of the by default enabled channels are being
+    # used. For example when only using the first 8 channels of the US band.
+    # Note: when left blank / empty array, all channels will be enabled.
+    enabled_uplink_channels=[0, 1, 2, 3, 4, 5, 6, 7]
+
 
     # Rejoin-request configuration (LoRaWAN 1.1)
     [regions.network.rejoin_request]
@@ -227,33 +228,10 @@
     [regions.network.class_b]
 
       # Ping-slot data-rate. 
-      ping_slot_dr=0
+      ping_slot_dr=8
 
       # Ping-slot frequency (Hz)
       #
       # set this to 0 to use the default frequency plan for the configured region
       # (which could be frequency hopping).
       ping_slot_frequency=0
-
-
-    # Below is the common set of extra channels. Please make sure that these
-    # channels are also supported by the gateways.
-    [[regions.network.extra_channels]]
-    frequency=867100000
-    min_dr=0
-    max_dr=5
-
-    [[regions.network.extra_channels]]
-    frequency=867500000
-    min_dr=0
-    max_dr=5
-
-    [[regions.network.extra_channels]]
-    frequency=867700000
-    min_dr=0
-    max_dr=5
-
-    [[regions.network.extra_channels]]
-    frequency=867900000
-    min_dr=0
-    max_dr=5

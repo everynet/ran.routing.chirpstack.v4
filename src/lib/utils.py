@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from time import time
 
 from structlog import getLogger
 
@@ -34,9 +35,10 @@ class Periodic:
                 return
 
             try:
+                start_time = time()
                 logger.debug(f"Starting periodic task {task_name!r}")
                 await self.awaitable_fn(*self._fn_args, **self._fn_kwargs)
-                logger.debug(f"Periodic task {task_name!r} finished")
+                logger.debug(f"Periodic task {task_name!r} finished in {time() - start_time:.03f}sec.")
             except Exception:
                 logger.exception(f"Error has occurred in periodic task {task_name}:")
                 retry += 1

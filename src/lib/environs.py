@@ -20,8 +20,8 @@ class Env(environs.Env):
         for env_file in env_files:
             if os.path.isfile(env_file):
                 path = env_file
-                logger.info(f"Loading settings file: {path}")
+                logger.debug(f"Loading settings file: {path}")
                 return environs.Env.read_env(path, recurse, verbose, override)
 
-        logger.warning("Settings file not found! Using the default values")
+        logger.warning("Settings file not found! Using environ values")
         return environs.Env.read_env(path, recurse, verbose, override)

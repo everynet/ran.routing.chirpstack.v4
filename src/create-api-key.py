@@ -9,13 +9,11 @@ from lib import chirpstack
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", type=str, help="name", default="ran-chirpstack-bridge", required=False)
     parser.add_argument("--username", type=str, help="Username", default="admin", required=False)
     parser.add_argument("--password", type=str, help="Password", default="admin", required=False)
-    parser.add_argument("--not-admin", help="Admin flag", action="store_false")
-    # TODO: add application_id support
-    # parser.add_argument("--application-id", type=int, help="Applicaiton id", default=0)
+    parser.add_argument("--not-admin", help="Admin flag", action="store_true", default=False)
     parser.add_argument("--tenant-id", type=str, help="Tenant id", required=False, default=None)
+    parser.add_argument("--key-name", type=str, help="API key name", required=False, default="ran-chirpstack-bridge")
     parser.add_argument(
         "--chirpstack-url",
         type=str,
@@ -37,10 +35,9 @@ async def main():
         )
     await chirpstack_api.authenticate(args.username, args.password)
     new_api_key = await chirpstack_api.create_api_key(
-        name=args.name,
-        is_admin=args.not_admin,
+        name=args.key_name,
+        is_admin=(not args.not_admin),
         tenant_id=tenant_id,
-        # application_id=args.application_id,
     )
     print(f'CHIRPSTACK_API_TOKEN="{new_api_key.token}"')
 

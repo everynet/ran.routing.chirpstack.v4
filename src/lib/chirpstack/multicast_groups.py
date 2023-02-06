@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass, field, fields
-from typing import Dict, List, Optional, Protocol, Set
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Protocol, Set
 
 from .api import ChirpStackApi
 
@@ -42,7 +42,7 @@ class MulticastGroup:
             return
 
         if trigger_update_callback:
-            await self._groups.on_group_updated(old_group=self, new_group=remote_group)
+            await self._groups.update_hook.on_group_updated(old_group=self, new_group=remote_group)
 
         if update_local_list:
             self._groups._update_local_group(remote_group)
@@ -52,6 +52,29 @@ class MulticastGroup:
         self.devices = remote_group.devices.copy()
         self.mc_nwk_s_key = remote_group.mc_nwk_s_key
         self.mc_app_s_key = remote_group.mc_app_s_key
+
+
+class BaseUpdateHook(Protocol):
+    # Update callbacks, must be redefined in subclasses
+    async def on_group_updated(self, old_group: MulticastGroup, new_group: MulticastGroup) -> None:
+        pass
+
+    async def on_group_add(self, group: MulticastGroup) -> None:
+        pass
+
+    async def on_group_remove(self, group: MulticastGroup) -> None:
+        pass
+
+
+class _EmptyUpdateHook(BaseUpdateHook):
+    async def on_group_updated(self, old_group: MulticastGroup, new_group: MulticastGroup) -> None:
+        pass
+
+    async def on_group_add(self, group: MulticastGroup) -> None:
+        pass
+
+    async def on_group_remove(self, group: MulticastGroup) -> None:
+        pass
 
 
 class MulticastGroupList(Protocol):
@@ -80,20 +103,28 @@ class MulticastGroupList(Protocol):
     def _update_local_group(self, group: MulticastGroup):
         pass
 
-    # Update callbacks, must be redefined in subclasses
-    async def on_group_updated(self, old_group: MulticastGroup, new_group: MulticastGroup) -> None:
+    @property
+    @abstractmethod
+    def update_hook(self) -> BaseUpdateHook:
         pass
 
-    async def on_group_add(self, group: MulticastGroup) -> None:
-        pass
-
-    async def on_group_remove(self, group: MulticastGroup) -> None:
+    @update_hook.setter
+    def update_hook(self, hook) -> None:
         pass
 
 
 class BaseChirpstackMulticastGroupList(MulticastGroupList):
-    def __init__(self, chirpstack_api: ChirpStackApi) -> None:
+    @property
+    def update_hook(self) -> BaseUpdateHook:
+        return self._update_hook
+
+    @update_hook.setter
+    def update_hook(self, hook) -> None:
+        self._update_hook = hook
+
+    def __init__(self, chirpstack_api: ChirpStackApi, update_hook: None | BaseUpdateHook = None) -> None:
         self._api = chirpstack_api
+        self._update_hook = update_hook if update_hook is not None else _EmptyUpdateHook()
 
 
 class ApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
@@ -109,8 +140,14 @@ class ApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
             group.devices.add(dev.dev_eui)
         return group
 
-    def __init__(self, chirpstack_api: ChirpStackApi, application_id: str, tenant_id: str) -> None:
-        super().__init__(chirpstack_api)
+    def __init__(
+        self,
+        chirpstack_api: ChirpStackApi,
+        application_id: str,
+        tenant_id: str,
+        update_hook: None | BaseUpdateHook = None,
+    ) -> None:
+        super().__init__(chirpstack_api, update_hook)
         self._application_id = application_id
         self._tenant_id = tenant_id
         self._id_to_group: Dict[str, MulticastGroup] = {}
@@ -131,15 +168,15 @@ class ApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
 
             existed_group = self._id_to_group.get(group.id)
             if not existed_group:
-                await self.on_group_add(group)
+                await self.update_hook.on_group_add(group)
                 continue
 
             if existed_group != group:
-                await self.on_group_updated(old_group=existed_group, new_group=group)
+                await self.update_hook.on_group_updated(old_group=existed_group, new_group=group)
 
             for group_id, deleted_group in self._id_to_group.items():
                 if group_id not in id_to_group:
-                    await self.on_group_remove(deleted_group)
+                    await self.update_hook.on_group_remove(deleted_group)
 
         self._id_to_group = id_to_group
         self._addr_to_id = addr_to_id
@@ -159,10 +196,44 @@ class ApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
         return self._id_to_group.get(group_id, None)
 
 
-class MultiApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
-    def __init__(self, chirpstack_api: ChirpStackApi, tenant_id: str) -> None:
-        super().__init__(chirpstack_api)
-        self._applications: Dict[str, ApplicationMulticastGroupListProxy] = {}
+class _BaseMultiListMulticastGroupList(BaseChirpstackMulticastGroupList):
+    _children: dict[Any, BaseChirpstackMulticastGroupList]  # Must be defined in inheritor
+
+    def get_group_by_addr(self, addr: str) -> Optional[MulticastGroup]:
+        for children_list in self._children.values():
+            group = children_list.get_group_by_addr(addr)
+            if group:
+                return group
+        return None
+
+    def get_group_by_id(self, group_id: str) -> Optional[MulticastGroup]:
+        for children_list in self._children.values():
+            group = children_list.get_group_by_id(group_id)
+            if group:
+                return group
+        return None
+
+    def _update_local_group(self, group: MulticastGroup) -> None:
+        for children_list in self._children.values():
+            app_group = children_list.get_group_by_id(group.id)
+            if app_group:
+                children_list._update_local_group(group)
+                break
+        return None
+
+    def get_all_groups(self) -> list[MulticastGroup]:
+        groups = []
+        for application in self._children.values():
+            groups.extend(application.get_all_groups())
+        return groups
+
+
+class MultiApplicationMulticastGroupList(_BaseMultiListMulticastGroupList):
+    def __init__(
+        self, chirpstack_api: ChirpStackApi, tenant_id: str, update_hook: None | BaseUpdateHook = None
+    ) -> None:
+        super().__init__(chirpstack_api, update_hook)
+        self._children: Dict[str, ApplicationMulticastGroupList] = {}  # type: ignore
         self.tenant_id = tenant_id
 
     async def _pull_group_from_remote(self, group_id: str) -> MulticastGroup:
@@ -173,79 +244,71 @@ class MultiApplicationMulticastGroupList(BaseChirpstackMulticastGroupList):
         group.mc_nwk_s_key = api_group.multicast_group.mc_nwk_s_key
         group.mc_app_s_key = api_group.multicast_group.mc_app_s_key
 
-        for application_id in self._applications.keys():
+        for application_id in self._children.keys():
             async for dev in self._api.get_devices(application_id=application_id, multicast_group_id=group_id):
                 group.devices.add(dev.dev_eui)
 
         return group
 
-    def get_all_groups(self) -> list[MulticastGroup]:
-        groups = []
-        for application in self._applications.values():
-            groups.extend(application.get_all_groups())
-        return groups
-
     async def sync_from_remote(self) -> None:
         application_ids = set()
 
         async for application in self._api.get_applications(self.tenant_id):
-            if application.id not in self._applications:
-                app_dev_list = ApplicationMulticastGroupListProxy(
-                    self,
+            if application.id not in self._children:
+                app_dev_list = ApplicationMulticastGroupList(
                     chirpstack_api=self._api,
                     application_id=application.id,
                     tenant_id=self.tenant_id,
+                    update_hook=self.update_hook,
                 )
-                self._applications[application.id] = app_dev_list
+                self._children[application.id] = app_dev_list
 
             application_ids.add(application.id)
-            await self._applications[application.id].sync_from_remote()
+            await self._children[application.id].sync_from_remote()
 
         # Removing applications lists, which was deleted
-        for application_id in list(self._applications.keys()):
+        for application_id in list(self._children.keys()):
             if application_id not in application_ids:
-                del self._applications[application_id]
-
-    def get_group_by_addr(self, addr: str) -> Optional[MulticastGroup]:
-        for app_list in self._applications.values():
-            group = app_list.get_group_by_addr(addr)
-            if group:
-                return group
-        return None
-
-    def get_group_by_id(self, group_id: str) -> Optional[MulticastGroup]:
-        for app_list in self._applications.values():
-            group = app_list.get_group_by_id(group_id)
-            if group:
-                return group
-        return None
-
-    def _update_local_group(self, group: MulticastGroup) -> None:
-        for app_list in self._applications.values():
-            app_group = app_list._id_to_group.get(group.id)
-            if app_group:
-                app_list._update_local_group(group)
-                break
-        return None
+                del self._children[application_id]
 
 
-class ApplicationMulticastGroupListProxy(ApplicationMulticastGroupList):
-    def __init__(
-        self,
-        multi_app_group_list: MultiApplicationMulticastGroupList,
-        chirpstack_api: ChirpStackApi,
-        application_id: str,
-        tenant_id: str,
-        tags: Optional[Dict[str, str]] = None,
-    ) -> None:
-        super().__init__(chirpstack_api, application_id, tenant_id)
-        self._multi_app_group_list = multi_app_group_list
+class MultiTenantMulticastGroupList(_BaseMultiListMulticastGroupList):
+    def __init__(self, chirpstack_api: ChirpStackApi, update_hook: None | BaseUpdateHook = None) -> None:
+        super().__init__(chirpstack_api, update_hook)
+        self._children: Dict[str, MultiApplicationMulticastGroupList] = {}  # type: ignore
 
-    async def on_group_updated(self, old_group: MulticastGroup, new_group: MulticastGroup) -> None:
-        await self._multi_app_group_list.on_group_updated(old_group, new_group)
+    async def _pull_group_from_remote(self, group_id: str) -> MulticastGroup:
+        group = MulticastGroup(self, group_id)
+        api_group = await self._api.get_multicast_group(group_id)
+        group.addr = api_group.multicast_group.mc_addr
+        group.name = api_group.multicast_group.name
+        group.mc_nwk_s_key = api_group.multicast_group.mc_nwk_s_key
+        group.mc_app_s_key = api_group.multicast_group.mc_app_s_key
 
-    async def on_group_add(self, group: MulticastGroup) -> None:
-        await self._multi_app_group_list.on_group_add(group)
+        # TODO: can we make this more efficiently?
+        for per_tenant_list in self._children.values():
+            for application_id in per_tenant_list._children.keys():
+                async for dev in self._api.get_devices(application_id=application_id, multicast_group_id=group_id):
+                    group.devices.add(dev.dev_eui)
 
-    async def on_group_remove(self, group: MulticastGroup) -> None:
-        await self._multi_app_group_list.on_group_remove(group)
+        return group
+
+    async def sync_from_remote(self) -> None:
+        tenants_ids = set()
+
+        async for tenant in self._api.get_tenants():
+            if tenant.id not in self._children:
+                multi_app_dev_list = MultiApplicationMulticastGroupList(
+                    chirpstack_api=self._api,
+                    tenant_id=tenant.id,
+                    update_hook=self._update_hook,
+                )
+                self._children[tenant.id] = multi_app_dev_list
+
+            tenants_ids.add(tenant.id)
+            await self._children[tenant.id].sync_from_remote()
+
+        # Removing applications lists, which was deleted
+        for tenant_id in list(self._children.keys()):
+            if tenant_id not in tenants_ids:
+                del self._children[tenant_id]

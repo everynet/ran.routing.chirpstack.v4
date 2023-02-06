@@ -51,15 +51,6 @@ class ChirpStackExtendedApi(ChirpStackApi):
 
         await client.Activate(req, metadata=self._auth_token)
 
-    # @suppress_rpc_error([grpc.StatusCode.NOT_FOUND, grpc.StatusCode.UNAUTHENTICATED])
-    # async def deactivate_device(self, dev_eui: str) -> None:
-    #     client = api.DeviceServiceStub(self._channel)
-
-    #     req = api.DeactivateDeviceRequest()
-    #     req.dev_eui = dev_eui
-
-    #     await client.Deactivate(req, metadata=self._auth_token)
-
     async def delete_device_profile(self, device_profile_id: str) -> None:
         client = api.DeviceProfileServiceStub(self._channel)
 
@@ -76,7 +67,7 @@ class ChirpStackExtendedApi(ChirpStackApi):
         device_profile.name = kwargs["name"]
         device_profile.tenant_id = kwargs["tenant_id"]
         device_profile.description = kwargs.get("description", "")
-        device_profile.region = kwargs.get("region", common_pb2.Region.EU868)
+        device_profile.region = common_pb2.Region.Value(kwargs.get("region", "EU868"))
         device_profile.mac_version = kwargs.get("mac_version", common_pb2.MacVersion.LORAWAN_1_0_3)
         device_profile.reg_params_revision = kwargs.get("reg_params_revision", common_pb2.RegParamsRevision.RP002_1_0_2)
         device_profile.adr_algorithm_id = kwargs.get("adr_algorithm_id", "default")
@@ -89,7 +80,7 @@ class ChirpStackExtendedApi(ChirpStackApi):
         device_profile.supports_class_b = kwargs.get("supports_class_b", False)
         device_profile.supports_class_c = kwargs.get("supports_class_c", False)
         device_profile.class_b_timeout = kwargs.get("class_b_timeout", 0)
-        device_profile.class_b_ping_slot_period = kwargs.get("class_b_ping_slot_period", 0)
+        # device_profile.class_b_ping_slot_period = kwargs.get("class_b_ping_slot_period", 0)
         device_profile.class_b_ping_slot_dr = kwargs.get("class_b_ping_slot_dr", 0)
         device_profile.class_b_ping_slot_freq = kwargs.get("class_b_ping_slot_freq", 0)
         device_profile.class_c_timeout = kwargs.get("class_c_timeout", 0)
@@ -165,6 +156,68 @@ class ChirpStackExtendedApi(ChirpStackApi):
         req.gateway_id = gateway_id
 
         return await client.Delete(req, metadata=self._auth_token)
+
+    async def enqueue_downlink(self, dev_eui, data: bytes, confirmed: bool = False, f_port: int = 2):
+        client = api.DeviceServiceStub(self._channel)
+
+        req = api.EnqueueDeviceQueueItemRequest()
+        req.queue_item.confirmed = confirmed
+        req.queue_item.data = data
+        req.queue_item.dev_eui = dev_eui
+        req.queue_item.f_port = f_port
+
+        return await client.Enqueue(req, metadata=self._auth_token)
+
+    async def create_multicast_group(self, **kwargs) -> str:
+        client = api.MulticastGroupServiceStub(self._channel)
+
+        mc = api.MulticastGroup()
+        mc.name = kwargs["name"]
+        mc.application_id = kwargs["application_id"]
+        mc.region = common_pb2.Region.Value(kwargs["region"])
+        mc.mc_addr = kwargs["mc_addr"]
+        mc.mc_nwk_s_key = kwargs["mc_nwk_s_key"]
+        mc.mc_app_s_key = kwargs["mc_app_s_key"]
+        mc.f_cnt = kwargs.get("f_cnt", 0)
+        mc.group_type = api.MulticastGroupType.Value(kwargs["group_type"])
+        mc.dr = kwargs.get("dr", 0)
+        mc.frequency = kwargs["frequency"]
+        mc.class_b_ping_slot_period = kwargs.get("class_b_ping_slot_period", 0)
+
+        req = api.CreateMulticastGroupRequest()
+        req.multicast_group.MergeFrom(mc)
+        response = await client.Create(req, metadata=self._auth_token)
+        return response.id
+
+    async def add_device_to_multicast_group(self, group_id: str, dev_eui: str):
+        client = api.MulticastGroupServiceStub(self._channel)
+
+        req = api.AddDeviceToMulticastGroupRequest()
+        req.multicast_group_id = group_id
+        req.dev_eui = dev_eui
+
+        return await client.AddDevice(req, metadata=self._auth_token)
+
+    async def delete_multicast_group(self, group_id: str):
+        client = api.MulticastGroupServiceStub(self._channel)
+        req = api.DeleteMulticastGroupRequest()
+        req.id = group_id
+
+        return await client.Delete(req, metadata=self._auth_token)
+
+    async def enqueue_multicast_downlink(self, group_id: str, f_port: int, data: bytes, f_cnt: Optional[int] = None):
+        client = api.MulticastGroupServiceStub(self._channel)
+
+        multicast = api.MulticastGroupQueueItem()
+        multicast.multicast_group_id = group_id
+        if f_cnt is not None:
+            multicast.f_cnt = f_cnt
+        multicast.f_port = f_port
+        multicast.data = data
+
+        req = api.EnqueueMulticastGroupQueueItemRequest(queue_item=multicast)
+
+        return await client.Enqueue(req, metadata=self._auth_token)
 
     # async def stream_frame_logs(self, dev_eui, timeout=None):
     #     client = api.DeviceServiceStub(self._channel)

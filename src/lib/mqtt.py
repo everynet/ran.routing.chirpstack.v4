@@ -21,7 +21,7 @@ class MQTTClient:
         """Set up client."""
         if topics_prefix is not None and "/" in topics_prefix:
             raise Exception("'topics_prefix' can't contain separators")
-        self._topics_prefix = topics_prefix
+        self._topics_prefix = topics_prefix if topics_prefix else None  # Replace None and empty string with None
         self._uri = uri
         self._client_options = client_options
         self._client: AsyncioClient = None  # type: ignore

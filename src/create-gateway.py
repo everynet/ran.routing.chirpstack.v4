@@ -3,8 +3,6 @@
 import argparse
 import asyncio
 
-import grpc
-
 import settings
 from lib import chirpstack
 
@@ -14,7 +12,7 @@ async def main():
     parser.add_argument("--username", type=str, help="Username", default="admin", required=False)
     parser.add_argument("--password", type=str, help="Password", default="admin", required=False)
     parser.add_argument("--gateway-id", help="Gateway id (mac)", default="000000000000C0DE", required=False)
-    parser.add_argument("--name", type=str, help="Gateway unique name", default="chirpstck-ran-bridge", required=False)
+    parser.add_argument("--name", type=str, help="Gateway unique name", default="chirpstack-ran-bridge", required=False)
     parser.add_argument("--description", type=str, help="Description", default="Chirpstack RAN gateway", required=False)
     parser.add_argument("--ns-name", type=str, help="Network server name", default="chirpstack")
     parser.add_argument("--ns-addr", type=str, help="Network server address", default="chirpstack-network-server:8000")

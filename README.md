@@ -39,15 +39,15 @@ Parameters are read from environment variables and/or **settings.cfg** and **.en
 | Parameter                         | Required | Default value    | Description                                                                                                                                                                           |
 | --------------------------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CHIRPSTACK_API_TOKEN              | Yes      |                  | You can generate an API Token using the corresponding menu item in the Сhirpstack Application Server Web UI                                                                           |
-| CHIRPSTACK_TENANT_ID              | Yes      |                  | ChirpStack tenant identifier                                                                                                                                                          |
-| CHIRPSTACK_MQTT_TOPIC_PREFIX      | Yes      | eu868            | global MQTT topics prefix (v4 configuration allowing to configure different MQTT topic prefixes for different regions)                                                                |
+| CHIRPSTACK_TENANT_ID              |          |                  | ChirpStack tenant identifier. May be used for single-tenant deployment. If not provided, bridge will operate in multi-tenant mode                                                     |
+| CHIRPSTACK_MQTT_TOPIC_PREFIX      |          |                  | global MQTT topics prefix (v4 configuration allowing to configure different MQTT topic prefixes for different regions). If not set, bridge will use topics without prefix.            |
 | CHIRPSTACK_REGION                 | Yes      | eu868            | ChirpStack region name (one of enabled regions, from ChirpStack configuration)                                                                                                        |
 | CHIRPSTACK_API_GRPC_HOST          | Yes      |                  | ChirpStack host name (IP address can also be used). This address is used by the ran-chirpstack-bridge to make gRPC calls to the ChirpStack Application. e.g. my-chirpstack-server.com |
 | CHIRPSTACK_API_GRPC_PORT          |          | 433              | ChirpStack gRPC API port                                                                                                                                                              |
 | CHIRPSTACK_API_GRPC_SECURE        |          | False            | ChirpStack gRPC API connection secure on not                                                                                                                                          |
 | CHIRPSTACK_API_GRPC_CERT_PATH     |          |                  | If you are using custom certificates for a secure connection, you must specify certificate path here                                                                                  |
 | CHIRPSTACK_MQTT_SERVER_URI        | Yes      |                  | ChirpStack MQTT server URI e.g. mqtt://my-chirpstack-server.com.  URI support username, password and secure connecton  e.g. mqtts://admin:pass@my-chirpstack-server.com               |
-| CHIRPSTACK_MATCH_TAGS             |          | everynet=true    | Mark devices (or device profiles) with the "everynet" tag to connect them to Everynet coverage. Here you need to set these tags. e.g. ran-device=yes tag.                             |
+| CHIRPSTACK_MATCH_TAGS             |          | everynet=true    | Mark devices (or device profiles) with the "everynet=true" tag to connect them to Everynet coverage. Here you can change this tag.                                                    |
 | CHIRPSTACK_GATEWAY_ID             | Yes      | 000000000000C0DE | MAC address of the virtual gateway from which messages will be arriving to the ChripStack                                                                                             |
 | CHIRPSTACK_DEVICES_REFRESH_PERIOD |          | 300              | Period in seconds to fetch device list from the ChirpStack and sync it with Everynet RAN                                                                                              |
 | RAN_TOKEN                         | Yes      |                  | RAN Routing API token                                                                                                                                                                 |
@@ -63,12 +63,95 @@ Parameters are read from environment variables and/or **settings.cfg** and **.en
 For now it is only possible to deploy this bridge using docker and docker-compose.
 If you don't have any installation of ChirpStack first you need to deploy it. For reference you can use docker-compose files from this repository.
 
+## Multi-Tenant bridge
+
 ### 1. Build chirpstack-ran-bridge docker image
+
 ```
 docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml build
 ```
 
-### 2. Start chirpstack.
+### 2. Start chirpstack
+
+```
+docker-compose -f docker-compose.chirpstack.yml up -d
+```
+
+
+## 3. Create chirpstack API key
+
+RanBridge in multi-tenant mode requires ChirpStack global API access token, obtained for user. **You can't use tenant API keys for multi-tenant mode.**
+
+You can create API key manually under `Network Server/API keys` section of chirpstack UI, or by using utility script:
+
+```
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
+    run chirpstack-ran-bridge python create-api-key.py
+```
+
+<details>
+  <summary>Example</summary>
+
+```
+$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
+    run chirpstack-ran-bridge python create-api-key.py
+
+CHIRPSTACK_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOi<...>CI6ImtleSJ9.HF2DwQL9jgUyXG0e5TfgvHpUteguSapeSsIvppIfRDE"
+
+```
+
+</details>
+
+Set `CHIRPSTACK_API_TOKEN` variable with obtained token in .env file.
+
+## 4. Create gateway
+
+You need to create gateway for bridge. You can do it under `Tenant/Gateways` section. Also, you can check ["5. Create gateway"](#5-create-gateway) section of Single-Tenant bridge guide below for extra info.
+
+You need to create only one gateway under any tenant to use bridge software.
+
+But, to support other tenants simultaneously, tenant-owner of created gateway must has "Gateways are private" configuration flag disabled.
+
+You can change this flag under `Tenant/Dashboard/Configuration` section of ChirpStack UI.
+
+### 5. Configure Access to RAN
+
+Edit .env file and set your RAN token in `RAN_TOKEN` variable and api URL in `RAN_API_URL` variable.
+You can obtain this values from RAN cloud UI - https://cloud.everynet.io/.
+
+### 6. Start chirpstack-ran-bridge
+
+On this step, your `.env` file must contain several required values, example:
+
+```env
+CHIRPSTACK_API_TOKEN="<...>"
+CHIRPSTACK_GATEWAY_ID="000000000000c0de"
+RAN_TOKEN="<...>"
+RAN_API_URL="https://dev.cloud.everynet.io/api/v1"
+```
+
+Now, you can run configured RAN-bridge.
+
+```
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml up -d
+```
+
+ChirpStack with chirpstack-ran-bridge will be available at `http://<YOUR DOMAIN>:8080`
+
+
+---
+
+
+## Single-Tenant bridge
+
+### 1. Build chirpstack-ran-bridge docker image
+
+```
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml build
+```
+
+### 2. Start chirpstack
+
 ```
 docker-compose -f docker-compose.chirpstack.yml up -d
 ```
@@ -96,15 +179,16 @@ $ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-r
 |  ChirpStack  |  52f14cd4-c6f1-4fbd-8f87-4025e1d49242   |         yes         |
 
 ```
+
 </details>
 
-### 4. Create Chirpstack API token
+### 4. Create chirpstack API key
 
-You can create api-token manually under "api-keys" section of chirpstack UI, or use utility script:
+You can create api-token manually under `Network Server/API keys` section of chirpstack UI, or by using utility script:
 
 ```
 docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-token.py
+    run chirpstack-ran-bridge python create-api-key.py
 ```
 
 <details>
@@ -112,27 +196,32 @@ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran
 
 ```
 $ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-token.py
+    run chirpstack-ran-bridge python create-api-key.py
 
 CHIRPSTACK_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOi<...>CI6ImtleSJ9.HF2DwQL9jgUyXG0e5TfgvHpUteguSapeSsIvppIfRDE"
 
 ```
+
 </details>
 
 Set `CHIRPSTACK_API_TOKEN` variable with obtained token in .env file.
 
+#### Unprivileged api keys
+
 If you want to create non-admin access token for your ran-bridge installation, you can generate token only for desired tenant.
+
+It can be done manually under `Tenant/API keys` section of chirpstack UI, or with utility script.
 
 ```
 docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-token.py --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242 --not-admin
+    run chirpstack-ran-bridge python create-api-key.py --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242 --not-admin
 ```
 
 In this case provide "--tenant-id" flag with same tenant_id, you set as .env variable `CHIRPSTACK_TENANT_ID` on step 3.
 
 ### 5. Create gateway
 
-You need to create new gateway in ChirpStack. You can do it under "tenant/gateways" section of UI, or use utility script:
+You need to create new gateway in ChirpStack. You can do it under `Tenant/Gateways` section of UI, or use utility script:
 
 ```
 docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
@@ -149,6 +238,7 @@ $ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-r
 CHIRPSTACK_GATEWAY_ID="000000000000c0de"
 
 ```
+
 </details>
 
 Provide "--tenant-id" flag with same tenant_id, you set as .env variable `CHIRPSTACK_TENANT_ID` on step 3.
@@ -159,7 +249,7 @@ Set `CHIRPSTACK_GATEWAY_ID` variable with identifier of created gateway in .env 
 ### 6. Configure Access to RAN
 
 Edit .env file and set your RAN token in `RAN_TOKEN` variable and api URL in `RAN_API_URL` variable.
-You can obtain this values from RAN cloud UI.
+You can obtain this values from RAN cloud UI - https://cloud.everynet.io/.
 
 ### 7. Start chirpstack-ran-bridge
 
@@ -179,7 +269,7 @@ Now, you can run configured RAN-bridge.
 docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml up -d
 ```
 
-Chirpstack with ran-chirpstack-bridge will be available at `http://<YOUR DOMAIN>:8080`
+ChirpStack with chirpstack-ran-bridge will be available at `http://<YOUR DOMAIN>:8080`
 
 ---
 
@@ -197,6 +287,8 @@ docker run -d --name=ran-bridge --restart=always \
     -e CHIRPSTACK_API_GRPC_HOST=mydomain.com \
     -e CHIRPSTACK_API_GRPC_PORT=8080 \
     -e CHIRPSTACK_MQTT_SERVER_URI=mqtt://mydomain.com \
+    -e CHIRPSTACK_MQTT_TOPIC_PREFIX=eu868 \
+    -e CHIRPSTACK_REGION=eu868 \
     -e CHIRPSTACK_GATEWAY_ID=000000000000C0DE \
     -e RAN_TOKEN="<...>" \
     -e RAN_API_URL="https://dev.cloud.everynet.io/api/v1" \

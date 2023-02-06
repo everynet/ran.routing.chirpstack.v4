@@ -145,7 +145,13 @@
   # Multiple regions can be enabled simultaneously. Each region must match
   # the 'name' parameter of the region configuration in '[[regions]]'.
   enabled_regions=[
-    "eu868"
+    "as923",
+    "as923_2",
+    "au915_a",
+    "eu868",
+    "us915_a",
+    "us915_ab",
+    "us915",
   ]
 
   # Device session expiration.

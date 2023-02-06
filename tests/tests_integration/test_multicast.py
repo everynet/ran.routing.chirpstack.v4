@@ -5,22 +5,26 @@ from typing import Any
 import pylorawan
 import pytest
 
-from lib.traffic.models import DownlinkDeviceContext, DownlinkResult, DownlinkResultStatus, DownlinkTiming
+from lib.traffic.chirpstack import ChirpstackStatsUpdater
+from lib.traffic.models import DownlinkDeviceContext, DownlinkResult, DownlinkResultStatus
 
-from .conftest import ChirpStackExtendedApi, ChirpstackTrafficRouter
-from .lorawan import generate_data_message, generate_join_request, UplinkMaker
+from .conftest import ChirpStackExtendedApi, ChirpstackTrafficRouter, MQTTClient
+from .lorawan import generate_data_message, generate_downlink, generate_join_request, UplinkMaker
 
 
 @pytest.mark.integration
-@pytest.mark.downstream
+@pytest.mark.multicast
 @pytest.mark.parametrize(
-    "device_profile", [{"name": "test-downlink-abp-service-profile", "supports_class_c": True}], indirect=True
+    "device_profile", [{"name": "test-multicast-abp-service-profile", "supports_class_c": True}], indirect=True
 )
-@pytest.mark.parametrize("application", [{"name": "test-downlink-abp-application"}], indirect=True)
-async def test_abp_downstream(
+@pytest.mark.parametrize("application", [{"name": "test-multicast-abp-application"}], indirect=True)
+async def test_abp_multicast(
     chirpstack_api: ChirpStackExtendedApi,
     chirpstack_router: ChirpstackTrafficRouter,
+    mqtt_client: MQTTClient,
+    multicast_group: dict[str, Any],
     device_abp: dict[str, Any],
+    gateway: dict[str, Any],
     make_uplink: UplinkMaker,
 ):
     # Router must be synced before operations (because device may be added after creating router)
@@ -29,9 +33,18 @@ async def test_abp_downstream(
     stop = asyncio.Event()
     listener = asyncio.create_task(chirpstack_router.run(stop))
 
+    device = device_abp
+
+    # Adding device to multicast group
+    await chirpstack_api.add_device_to_multicast_group(multicast_group["id"], device["dev_eui"])
+
+    # Multicasts can be sent only on gateways, who submit stats
+    await ChirpstackStatsUpdater(
+        mqtt_client, gateway_mac=gateway["gateway_id"], stats_metadata={"region_name": "EU868"}
+    ).submit_stats()
+
     # First step - send and verify basic uplink-downlink chain, ta make device active in ChirpStack.
     # This step is equal to "test_abp_uplink" from "test_upstream.py"
-    device = device_abp
     message = generate_data_message(
         # The device derives FNwkSIntKey & AppSKey from the NwkKey
         device["app_s_key"],
@@ -62,17 +75,28 @@ async def test_abp_downstream(
     assert downlink_payload.mhdr.mtype == pylorawan.message.MType.UnconfirmedDataDown
     assert downlink_payload.payload.fhdr.dev_addr == int(device["dev_addr"], 16)
 
-    # Second step - enqueue downlink for device, and verify, is it handled by bridge
+    # Second step - enqueue multicast downlink for group, and verify, is it handled by bridge
+    lora_downlink = generate_downlink(
+        dev_addr=multicast_group["mc_addr"],
+        app_s_key=multicast_group["mc_app_s_key"],
+        nwk_s_key=multicast_group["mc_nwk_s_key"],
+        frm_payload=b"hello",
+    )
     f_port = 2
-    await chirpstack_api.enqueue_downlink(dev_eui=device["dev_eui"], data=b"hello", confirmed=False, f_port=f_port)
+    await chirpstack_api.enqueue_multicast_downlink(
+        group_id=multicast_group["id"],
+        f_port=f_port,
+        data=lora_downlink.generate(),
+    )
     downlink = await chirpstack_router.downstream_rx.get()
 
-    assert isinstance(downlink.timing, DownlinkTiming.Immediately)
-    assert downlink.device_ctx.dev_eui == device["dev_eui"]
+    assert isinstance(downlink.device_ctx, DownlinkDeviceContext.Multicast)
+    assert downlink.device_ctx.multicast_addr == multicast_group["mc_addr"]
+
     downlink_payload = pylorawan.message.PHYPayload.parse(downlink.payload)
     assert downlink_payload.mhdr.mtype == pylorawan.message.MType.UnconfirmedDataDown
     assert downlink_payload.payload.f_port == f_port
-    assert downlink_payload.payload.fhdr.dev_addr == int(device["dev_addr"], 16)
+    assert downlink_payload.payload.fhdr.dev_addr == int(multicast_group["mc_addr"], 16)
 
     # Terminating listener
     stop.set()
@@ -80,17 +104,20 @@ async def test_abp_downstream(
 
 
 @pytest.mark.integration
-@pytest.mark.downstream
+@pytest.mark.multicast
 @pytest.mark.parametrize(
     "device_profile",
-    [{"name": "test-downlink-otaa-service-profile", "supports_class_c": True, "supports_otaa": True}],
+    [{"name": "test-multicast-otaa-service-profile", "supports_class_c": True, "supports_otaa": True}],
     indirect=True,
 )
-@pytest.mark.parametrize("application", [{"name": "test-downlink-otaa-application"}], indirect=True)
-async def test_otaa_downstream(
+@pytest.mark.parametrize("application", [{"name": "test-multicast-otaa-application"}], indirect=True)
+async def test_otaa_multicast(
     chirpstack_api: ChirpStackExtendedApi,
     chirpstack_router: ChirpstackTrafficRouter,
+    mqtt_client: MQTTClient,
+    multicast_group: dict[str, Any],
     device_otaa: dict[str, Any],
+    gateway: dict[str, Any],
     make_uplink: UplinkMaker,
 ):
     # Router must be synced before operations (because device may be added after creating router)
@@ -99,12 +126,21 @@ async def test_otaa_downstream(
     stop = asyncio.Event()
     listener = asyncio.create_task(chirpstack_router.run(stop))
 
-    # First step - perform join for device
     device = device_otaa
+
+    # Adding device to multicast group
+    await chirpstack_api.add_device_to_multicast_group(multicast_group["id"], device["dev_eui"])
+
+    # Multicasts can be sent only on gateways, who submit stats
+    await ChirpstackStatsUpdater(
+        mqtt_client, gateway_mac=gateway["gateway_id"], stats_metadata={"region_name": "EU868"}
+    ).submit_stats()
+
+    # First step - perform join for device
     message = generate_join_request(
-        device["nwk_key"],
-        device["app_eui"],
-        device["dev_eui"],
+        device_otaa["nwk_key"],
+        device_otaa["app_eui"],
+        device_otaa["dev_eui"],
     )
     uplink = make_uplink(message)
     uplink_ack = await chirpstack_router.handle_upstream(uplink)
@@ -165,17 +201,28 @@ async def test_otaa_downstream(
     assert downlink_payload.mhdr.mtype == pylorawan.message.MType.UnconfirmedDataDown
     assert downlink_payload.payload.fhdr.dev_addr == int(dev_addr, 16)
 
-    # Third step - enqueue downlink for device, and verify, is it handled by bridge
+    # Third step - enqueue multicast downlink for group, and verify, is it handled by bridge
+    lora_downlink = generate_downlink(
+        dev_addr=multicast_group["mc_addr"],
+        app_s_key=multicast_group["mc_app_s_key"],
+        nwk_s_key=multicast_group["mc_nwk_s_key"],
+        frm_payload=b"hello",
+    )
     f_port = 2
-    await chirpstack_api.enqueue_downlink(dev_eui=device["dev_eui"], data=b"hello", confirmed=False, f_port=f_port)
+    await chirpstack_api.enqueue_multicast_downlink(
+        group_id=multicast_group["id"],
+        f_port=f_port,
+        data=lora_downlink.generate(),
+    )
     downlink = await chirpstack_router.downstream_rx.get()
 
-    assert isinstance(downlink.timing, DownlinkTiming.Immediately)
-    assert downlink.device_ctx.dev_eui == device["dev_eui"]
+    assert isinstance(downlink.device_ctx, DownlinkDeviceContext.Multicast)
+    assert downlink.device_ctx.multicast_addr == multicast_group["mc_addr"]
+
     downlink_payload = pylorawan.message.PHYPayload.parse(downlink.payload)
     assert downlink_payload.mhdr.mtype == pylorawan.message.MType.UnconfirmedDataDown
     assert downlink_payload.payload.f_port == f_port
-    assert downlink_payload.payload.fhdr.dev_addr == int(dev_addr, 16)
+    assert downlink_payload.payload.fhdr.dev_addr == int(multicast_group["mc_addr"], 16)
 
     # Terminating listener
     stop.set()

@@ -1,4 +1,5 @@
 import asyncio
+from enum import Enum
 from typing import Any, AsyncIterator, Dict, Optional
 
 import grpc
@@ -52,23 +53,36 @@ def get_grpc_channel(host: str, port: str, secure: bool = True, cert_path: str =
 def grpc_channel_from_url(url: str) -> grpc.aio.Channel:
     url_obj = URL(url)
     if url_obj.scheme.lower() not in ("http", "https"):
-        raise Exception("Please, specify url schema  url")
+        raise Exception("Please, specify url schema: http or https")
     return get_grpc_channel(url_obj.host, url_obj.port, url_obj.scheme == "https", None)  # type: ignore
+
+
+class TokenType(Enum):
+    USER = 1
+    KEY = 2
 
 
 class ChirpStackApi:
     @classmethod
-    def from_url(cls, url: str, **kwargs):
+    def from_url(cls, url: str, jwt_token: str | None = None):
         url_obj = URL(url)
         if url_obj.scheme.lower() not in ("http", "https"):
             raise Exception("Please, specify url schema")
-        return cls(grpc_channel_from_url(url), **kwargs)
+        return cls(grpc_channel_from_url(url), jwt_token)
 
     @classmethod
-    def from_conn_params(cls, host: str, port: str, secure: bool = True, cert_path: Optional[str] = None, **kwargs):
-        return cls(get_grpc_channel(host, port, secure, cert_path), **kwargs)
+    def from_conn_params(
+        cls,
+        host: str,
+        port: str,
+        secure: bool = True,
+        cert_path: Optional[str] = None,
+        jwt_token: str | None = None,
+        **kwargs,
+    ):
+        return cls(get_grpc_channel(host, port, secure, cert_path), jwt_token)
 
-    def __init__(self, grpc_channel: grpc.aio.Channel, jwt_token: str = None) -> None:
+    def __init__(self, grpc_channel: grpc.aio.Channel, jwt_token: str | None = None) -> None:
         self._channel = grpc_channel
         self._jwt_token = jwt_token
 
@@ -95,6 +109,16 @@ class ChirpStackApi:
         self._jwt_token = result.jwt
         return True
 
+    async def has_global_api_token(self) -> bool:
+        # TODO: better permission check?
+        @suppress_rpc_error([grpc.StatusCode.UNAUTHENTICATED])
+        async def test_is_global_api():
+            return await api.TenantServiceStub(self._channel).List(
+                api.ListTenantsRequest(offset=0, limit=1), metadata=self._auth_token
+            )
+
+        return (await test_is_global_api()) is not None
+
     async def _get_paginated_data(self, method: Any, request: Any, batch_size=20) -> AsyncIterator[Any]:
         while True:
             response = await method(request, metadata=self._auth_token)
@@ -107,11 +131,11 @@ class ChirpStackApi:
     async def profile(self) -> api.ProfileResponse:
         return await api.InternalServiceStub(self._channel).Profile(Empty(), metadata=self._auth_token)
 
-    async def get_tenants(self) -> AsyncIterator[api.ListTenantsResponse]:
-        user_profile = await self.profile()
-        async for tenant in self._get_paginated_data(
-            api.TenantServiceStub(self._channel).List, api.ListTenantsRequest(user_id=user_profile.user.id, limit=20)
-        ):
+    async def get_tenants(self, user_id: str | None = None) -> AsyncIterator[api.ListTenantsResponse]:
+        req = api.ListTenantsRequest(offset=0, limit=20)
+        if user_id:
+            req.user_id = user_id
+        async for tenant in self._get_paginated_data(api.TenantServiceStub(self._channel).List, req):
             yield tenant
 
     async def get_applications(self, tenant_id: str, batch_size: int = 20):
@@ -129,7 +153,6 @@ class ChirpStackApi:
         name: str,
         is_admin: bool,
         tenant_id: str | None = None,
-        # application_id: int = 0,  # TODO: handle application_id
     ) -> api.CreateApiKeyResponse:
         if is_admin is False:
             tenant_id = tenant_id if tenant_id is not None else (await self.profile()).user.id
@@ -139,14 +162,14 @@ class ChirpStackApi:
                 tenant_id = None
 
         service = api.InternalServiceStub(self._channel)
+        api_key = api.ApiKey(
+            name=name,
+            is_admin=is_admin,
+        )
+        if tenant_id:
+            api_key.tenant_id = tenant_id
         result = await service.CreateApiKey(
-            api.CreateApiKeyRequest(
-                api_key=api.ApiKey(
-                    name=name,
-                    is_admin=is_admin,
-                    tenant_id=tenant_id,
-                )
-            ),
+            api.CreateApiKeyRequest(api_key=api_key),
             metadata=self._auth_token,
         )
         return result
@@ -286,6 +309,20 @@ class ChirpStackApi:
         req.gateway_id = gateway_id
 
         return await client.Get(req, metadata=self._auth_token)
+
+    async def get_gateways(self, search: str | None = None, tenant_id: str | None = None, batch_size: int = 20):
+        client = api.GatewayServiceStub(self._channel)
+
+        req = api.ListGatewaysRequest()
+        req.limit = batch_size
+        req.offset = 0
+        if search:
+            req.search = search
+        if tenant_id:
+            req.tenant_id = tenant_id
+
+        async for gateway in self._get_paginated_data(client.List, req, batch_size):
+            yield gateway
 
     async def get_multicast_groups(
         self,
