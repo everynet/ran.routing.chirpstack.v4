@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install --no-install-recommends --yes \
     dumb-init \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
-RUN pip install -U pip poetry==1.1.14
+RUN pip install -U pip poetry==1.3.2
 RUN poetry config virtualenvs.create false
 
 COPY poetry.lock /
