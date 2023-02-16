@@ -131,7 +131,7 @@ class ChirpstackTrafficRouter:
                 raise Exception("Supported only LoRa modulation")
 
             lora_modulation = LoRaModulation(
-                bandwidth=tx_info.modulation.lora.bandwidth * 1000,
+                bandwidth=tx_info.modulation.lora.bandwidth,
                 spreading=tx_info.modulation.lora.spreading_factor,
             )
 
