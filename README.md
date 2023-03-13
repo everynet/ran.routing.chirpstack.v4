@@ -36,14 +36,23 @@ Before using this software you should configure the following parameters. Make s
 
 Parameters are read from environment variables and/or **settings.cfg** and **.env** files.
 
+For docker-compose deployment you can use config template from [`.env-dist-docker`](./.env-dist-docker). Copy this file contents into `.env` before following docker-compose deployment guide below.
+
+```bash
+cp .env-dist-docker .env
+```
+
+Template with all config variables with their default can be found at [`.env-dist`](./.env-dist).
+
+
 | Parameter                         | Required | Default value    | Description                                                                                                                                                                           |
 | --------------------------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CHIRPSTACK_API_TOKEN              | Yes      |                  | You can generate an API Token using the corresponding menu item in the Сhirpstack Application Server Web UI                                                                           |
 | CHIRPSTACK_TENANT_ID              |          |                  | ChirpStack tenant identifier. May be used for single-tenant deployment. If not provided, bridge will operate in multi-tenant mode                                                     |
 | CHIRPSTACK_MQTT_TOPIC_PREFIX      |          |                  | global MQTT topics prefix (v4 configuration allowing to configure different MQTT topic prefixes for different regions). If not set, bridge will use topics without prefix.            |
 | CHIRPSTACK_REGION                 | Yes      | eu868            | ChirpStack region name (one of enabled regions, from ChirpStack configuration)                                                                                                        |
-| CHIRPSTACK_API_GRPC_HOST          | Yes      |                  | ChirpStack host name (IP address can also be used). This address is used by the ran-chirpstack-bridge to make gRPC calls to the ChirpStack Application. e.g. my-chirpstack-server.com |
-| CHIRPSTACK_API_GRPC_PORT          |          | 433              | ChirpStack gRPC API port                                                                                                                                                              |
+| CHIRPSTACK_API_GRPC_HOST          | Yes      | localhost        | ChirpStack host name (IP address can also be used). This address is used by the ran-chirpstack-bridge to make gRPC calls to the ChirpStack Application. e.g. my-chirpstack-server.com |
+| CHIRPSTACK_API_GRPC_PORT          |          | 8080             | ChirpStack gRPC API port                                                                                                                                                              |
 | CHIRPSTACK_API_GRPC_SECURE        |          | False            | ChirpStack gRPC API connection secure on not                                                                                                                                          |
 | CHIRPSTACK_API_GRPC_CERT_PATH     |          |                  | If you are using custom certificates for a secure connection, you must specify certificate path here                                                                                  |
 | CHIRPSTACK_MQTT_SERVER_URI        | Yes      |                  | ChirpStack MQTT server URI e.g. mqtt://my-chirpstack-server.com.  URI support username, password and secure connecton  e.g. mqtts://admin:pass@my-chirpstack-server.com               |
@@ -124,10 +133,13 @@ You can obtain this values from RAN cloud UI - https://cloud.everynet.io/.
 On this step, your `.env` file must contain several required values, example:
 
 ```env
+# ChirpStack access variables
 CHIRPSTACK_API_TOKEN="<...>"
 CHIRPSTACK_GATEWAY_ID="000000000000c0de"
+
+# Ran Routing access variables
+RAN_API_URL="https://eu.cloud.everynet.io/api/v1"
 RAN_TOKEN="<...>"
-RAN_API_URL="https://dev.cloud.everynet.io/api/v1"
 ```
 
 Now, you can run configured RAN-bridge.
@@ -256,11 +268,14 @@ You can obtain this values from RAN cloud UI - https://cloud.everynet.io/.
 On this step, your `.env` file must contain several required values, example:
 
 ```env
+# ChirpStack access variables
 CHIRPSTACK_TENANT_ID="52f14cd4-c6f1-4fbd-8f87-4025e1d49242"
 CHIRPSTACK_API_TOKEN="<...>"
 CHIRPSTACK_GATEWAY_ID="000000000000c0de"
+
+# Ran Routing access variables
+RAN_API_URL="https://eu.cloud.everynet.io/api/v1"
 RAN_TOKEN="<...>"
-RAN_API_URL="https://dev.cloud.everynet.io/api/v1"
 ```
 
 Now, you can run configured RAN-bridge.

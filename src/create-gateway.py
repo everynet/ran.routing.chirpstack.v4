@@ -3,8 +3,8 @@
 import argparse
 import asyncio
 
-import settings
 from lib import chirpstack
+from lib.environs import Env
 
 
 async def main():
@@ -30,11 +30,14 @@ async def main():
     if args.chirpstack_url:
         chirpstack_api = chirpstack.ChirpStackApi.from_url(args.chirpstack_url)
     else:
+        # TODO: better way to keep in sync with "settings.py" env variables
+        env = Env()
+        env.read_env()
         chirpstack_api = chirpstack.ChirpStackApi.from_conn_params(
-            host=settings.CHIRPSTACK_API_GRPC_HOST,
-            port=settings.CHIRPSTACK_API_GRPC_PORT,
-            secure=settings.CHIRPSTACK_API_GRPC_SECURE,
-            cert_path=settings.CHIRPSTACK_API_GRPC_CERT_PATH,
+            host=env("CHIRPSTACK_API_GRPC_HOST", "localhost"),
+            port=env.int("CHIRPSTACK_API_GRPC_PORT", 8080),
+            secure=env.bool("CHIRPSTACK_API_GRPC_SECURE", False),
+            cert_path=env("CHIRPSTACK_API_GRPC_CERT_PATH", None),
         )
     await chirpstack_api.authenticate(args.username, args.password)
 

@@ -165,3 +165,6 @@ cython_debug/
 
 # Random files may be placed in thos folder
 /trash
+
+# Main .env file must not be tracked
+.env
