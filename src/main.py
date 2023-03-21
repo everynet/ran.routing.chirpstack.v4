@@ -41,16 +41,51 @@ async def get_gateway(chirpstack_api: chirpstack.ChirpStackApi, gateway_id: str)
     return gateway.gateway.gateway_id
 
 
-async def healthcheck_live(context):
-    pass
-
-
-async def healthcheck_ready(context):
-    pass
-
-
 async def main(loop):
     configure_logging(log_level=settings.LOG_LEVEL, console_colors=True)
+
+    # Event to stop 'em all!
+    stop_event = asyncio.Event()
+
+    # Event to signal when service is ready
+    service_ready = asyncio.Event()
+
+    async def healthcheck_live(context):
+        if stop_event.is_set():
+            return False
+        return True
+
+    async def healthcheck_ready(context):
+        if service_ready.is_set():
+            return True
+        return False
+
+    def stop_all() -> None:
+        stop_event.set()
+        logger.warning("Shutting down service! Press ^C again to terminate")
+
+        def terminate():
+            sys.exit("\nTerminated!\n")
+
+        for sig in STOP_SIGNALS:
+            loop.remove_signal_handler(sig)
+            loop.add_signal_handler(sig, terminate)
+
+    for sig in STOP_SIGNALS:
+        loop.add_signal_handler(sig, stop_all)
+
+    # Storing handlers for created asyncio tasks
+    tasks = set()
+
+    healthcheck_server = healthcheck.HealthcheckServer(healthcheck_live, healthcheck_ready, None)
+    tasks.add(
+        asyncio.create_task(
+            healthcheck_server.run(stop_event, settings.HEALTHCHECK_SERVER_HOST, settings.HEALTHCHECK_SERVER_PORT),
+            name="health_check",
+        )
+    )
+    logger.info("HealthCheck server task created", task_name="health_check")
+
     tags = get_tags(settings.CHIRPSTACK_MATCH_TAGS)
     logger.info("Chirpstack object selector: ", tags=tags)
 
@@ -83,7 +118,8 @@ async def main(loop):
                 "\n  - If you want to use ran-bridge for multiple tenants, specify global api key as "
                 "CHIRPSTACK_API_TOKEN."
                 "\n  - If you want to use ran-bridge for specific tenant with this api key, specify "
-                "CHIRPSTACK_TENANT_ID.\n", flush=True
+                "CHIRPSTACK_TENANT_ID.\n",
+                flush=True,
             )
             await ran_core.close()
             return
@@ -132,24 +168,6 @@ async def main(loop):
     await ran_chirpstack_multicast_groups.sync_from_remote()
     logger.info("Multicast groups synced")
 
-    # Global stop event to stop 'em all!
-    stop_event = asyncio.Event()
-
-    def stop_all() -> None:
-        stop_event.set()
-        logger.warning("Shutting down service! Press ^C again to terminate")
-
-        def terminate():
-            sys.exit("\nTerminated!\n")
-
-        for sig in STOP_SIGNALS:
-            loop.remove_signal_handler(sig)
-            loop.add_signal_handler(sig, terminate)
-
-    for sig in STOP_SIGNALS:
-        loop.add_signal_handler(sig, stop_all)
-
-    tasks = set()
     tasks.add(
         Periodic(ran_chirpstack_devices.sync_from_remote).create_task(
             stop_event,
@@ -215,18 +233,14 @@ async def main(loop):
     tasks.add(asyncio.create_task(manager.run(stop_event), name="traffic_manager"))
     logger.info("TrafficManager started", task_name="traffic_manager")
 
-    healthcheck_server = healthcheck.HealthcheckServer(healthcheck_live, healthcheck_ready, None)
-    tasks.add(
-        asyncio.create_task(
-            healthcheck_server.run(stop_event, settings.HEALTHCHECK_SERVER_HOST, settings.HEALTHCHECK_SERVER_PORT),
-            name="health_check",
-        )
-    )
-    logger.info("HealthCheck server started", task_name="health_check")
+    # We are operational now
+    service_ready.set()
 
+    # Waiting termination
     tasks.add(asyncio.create_task(stop_event.wait(), name="stop_event_wait"))
-
     finished, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+    service_ready.clear()
     finished_task = finished.pop()
     logger.warning(f"Task {finished_task.get_name()!r} exited, shutting down gracefully")
 

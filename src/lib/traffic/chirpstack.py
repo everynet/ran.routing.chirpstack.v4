@@ -144,8 +144,8 @@ class ChirpstackTrafficRouter:
                 timing = DownlinkTiming.Delay(seconds=tx_info.timing.delay.delay.seconds)
             elif timing_type == "gps_epoch":
                 # Class B
-                seconds = tx_info.timing.gps_epoch_timing_info.time_since_gps_epoch.seconds
-                nanos = tx_info.timing.gps_epoch_timing_info.time_since_gps_epoch.nanos
+                seconds = tx_info.timing.gps_epoch.time_since_gps_epoch.seconds
+                nanos = tx_info.timing.gps_epoch.time_since_gps_epoch.nanos
                 # tmms measured in milliseconds
                 timing = DownlinkTiming.GpsTime(tmms=seconds * 10**3 + nanos // 10**6)
             elif timing_type == "immediately":
@@ -269,13 +269,13 @@ class ChirpstackTrafficRouter:
         await self._send_tx_ack(downlink_result.downlink_id, ack_statuses)
 
     async def _fetch_downlink_device_context(self, downlink: Downlink) -> Optional[DownlinkDeviceContext.ContextBase]:
-        device: Device | None = self._chirpstack_context_to_device.get(downlink.context_id, None)
+        device: Device | None = self._chirpstack_context_to_device.pop(downlink.context_id, None)
         mhdr = pylorawan.message.MHDR.parse(downlink.payload[:1])
 
         # First branch - JoinAccept. It will use device data, stored in cache after handling uplink.
         if mhdr.mtype == pylorawan.message.MType.JoinAccept:
             if not device:
-                # This condition is unreachable in normal conditions, because JoinAccept is answer to uplink, se we
+                # This branch is unreachable in normal conditions, because JoinAccept is answer to uplink, so we
                 # will have this device in cache already.
                 logger.warning("Missing device context for JoinAccept message")
                 return None
@@ -283,14 +283,21 @@ class ChirpstackTrafficRouter:
             # If this is join - we need to force update device's new addr in local storage
             await device.sync_from_remote(trigger_update_callback=False, update_local_list=True)
             logger.debug("Device list synced for newly joined device", dev_eui=device.dev_eui, new_addr=device.dev_addr)
-            logger.debug("Device context obtained from cache (JoinAccept)", context_id=downlink.context_id.hex())
+            logger.debug(
+                "Device context obtained from cache (JoinAccept)",
+                context_id=downlink.context_id.hex(),
+                dev_eui=device.dev_eui,
+                dev_addr=device.dev_addr,
+            )
             return DownlinkDeviceContext.Regular(dev_eui=device.dev_eui, target_dev_addr=device.dev_addr)
 
         # If this is not JoinAccept - it can be class A downlink, so we using device from cache.
         if device is not None:
-            self._chirpstack_context_to_device.pop(downlink.context_id)
             logger.debug(
-                "Device context obtained from cache (answering to uplink)", context_id=downlink.context_id.hex()
+                "Device context obtained from cache (answering to uplink)",
+                context_id=downlink.context_id.hex(),
+                dev_eui=device.dev_eui,
+                dev_addr=device.dev_addr,
             )
             return DownlinkDeviceContext.Regular(dev_eui=device.dev_eui)
 
@@ -310,7 +317,11 @@ class ChirpstackTrafficRouter:
 
         # If device found in devices list, we are currently processing B/C downlink. Device's DevEui found.
         if device is not None:
-            logger.debug("Device context obtained (class B/C downlink)", dev_addr=str_dev_addr)
+            logger.debug(
+                "Device context obtained (class B/C downlink)",
+                dev_addr=str_dev_addr,
+                dev_eui=device.dev_eui,
+            )
             return DownlinkDeviceContext.Regular(dev_eui=device.dev_eui)
         logger.debug("Could not obtain device context for device, looking in multicast groups", dev_addr=str_dev_addr)
 

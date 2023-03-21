@@ -25,7 +25,7 @@ class RanDevicesSyncHook(chirpstack.DevicesUpdateHook):
             # Resync device. Fetch data from remote and use it as old device in sync.
             ran_device = (await self.ran_core.routing_table.select([int(device.dev_eui, 16)]))[0]
             old_device = chirpstack.Device(
-                _devices=self,
+                _devices=self,  # type: ignore
                 dev_eui=device.dev_eui,
                 dev_addr=f"{ran_device.active_dev_addr:08x}" if ran_device.active_dev_addr is not None else None,
             )

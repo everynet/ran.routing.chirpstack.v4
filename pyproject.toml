@@ -10,7 +10,7 @@ pydantic = {extras = ["dotenv"], version = "^1.9.0"}
 uvloop = "^0.16.0"
 structlog = "^21.5.0"
 protobuf = "<3.21"
-chirpstack-api = "^4.0.3"
+chirpstack-api = "^4.3.0"
 paho-mqtt = "^1.6.1"
 asyncio-mqtt = "^0.12.1"
 environs = "^9.5.0"

@@ -2,6 +2,16 @@
 
 It is an early stage beta product. Please refer to the known limitations section.
 
+> ⚠️ **Important**: before cloning the repo, please ensure you use line separator format compatible with this repo.
+
+If you are using Windows, ensure you git config option `core.autocrlf` set to `false` (can be checked with `git config core.autocrlf`). To set correct value, execute command:
+
+```bash
+git config --global core.autocrlf false
+```
+
+[Here](https://docs.github.com/en/get-started/getting-started-with-git/configuring-git-to-handle-line-endings) you can read more about configuring Git to handle line endings.
+
 ## Introduction
 
 Everynet operates a Neutral-Host Cloud RAN, which is agnostic to the LoRaWAN Network Server. Everynet's main product is carrier-grade coverage that can be connected to any LNS available on the market and ChirpStack in particular.
@@ -94,16 +104,14 @@ RanBridge in multi-tenant mode requires ChirpStack global API access token, obta
 You can create API key manually under `Network Server/API keys` section of chirpstack UI, or by using utility script:
 
 ```
-docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-api-key.py
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-api-key.py
 ```
 
 <details>
   <summary>Example</summary>
 
 ```
-$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-api-key.py
+$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-api-key.py
 
 CHIRPSTACK_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOi<...>CI6ImtleSJ9.HF2DwQL9jgUyXG0e5TfgvHpUteguSapeSsIvppIfRDE"
 
@@ -119,7 +127,7 @@ You need to create gateway for bridge. You can do it under `Tenant/Gateways` sec
 
 You need to create only one gateway under any tenant to use bridge software.
 
-But, to support other tenants simultaneously, tenant-owner of created gateway must has "Gateways are private" configuration flag disabled.
+But, to support other tenants simultaneously, tenant-owner of created gateway must has "Gateways are private" configuration flag **disabled**.
 
 You can change this flag under `Tenant/Dashboard/Configuration` section of ChirpStack UI.
 
@@ -173,8 +181,7 @@ docker-compose -f docker-compose.chirpstack.yml up -d
 Decide required tenant id. You can find this id in chirpstack UI, or use utility script:
 
 ```
-docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python query-tenants.py
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python query-tenants.py
 ```
 
 Select tenant and copy it's `tenant id` value into `.env` file as `CHIRPSTACK_TENANT_ID` variable. Ensure this tenant can have gateways.
@@ -183,8 +190,7 @@ Select tenant and copy it's `tenant id` value into `.env` file as `CHIRPSTACK_TE
   <summary>Example</summary>
 
 ```
-$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \    
-    run chirpstack-ran-bridge python query-tenants.py
+$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python query-tenants.py
 
 |     name     |                tenant id                |  can have gateways  |
 --------------------------------------------------------------------------------
@@ -199,16 +205,14 @@ $ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-r
 You can create api-token manually under `Network Server/API keys` section of chirpstack UI, or by using utility script:
 
 ```
-docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-api-key.py
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-api-key.py
 ```
 
 <details>
   <summary>Example</summary>
 
 ```
-$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-api-key.py
+$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-api-key.py
 
 CHIRPSTACK_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOi<...>CI6ImtleSJ9.HF2DwQL9jgUyXG0e5TfgvHpUteguSapeSsIvppIfRDE"
 
@@ -225,8 +229,7 @@ If you want to create non-admin access token for your ran-bridge installation, y
 It can be done manually under `Tenant/API keys` section of chirpstack UI, or with utility script.
 
 ```
-docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-api-key.py --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242 --not-admin
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-api-key.py --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242 --not-admin
 ```
 
 In this case provide "--tenant-id" flag with same tenant_id, you set as .env variable `CHIRPSTACK_TENANT_ID` on step 3.
@@ -236,16 +239,14 @@ In this case provide "--tenant-id" flag with same tenant_id, you set as .env var
 You need to create new gateway in ChirpStack. You can do it under `Tenant/Gateways` section of UI, or use utility script:
 
 ```
-docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-gateway.py --gateway-id 000000000000c0de --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242
+docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run --rm chirpstack-ran-bridge python create-gateway.py --gateway-id 000000000000c0de --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242
 ```
 
 <details>
   <summary>Example</summary>
 
 ```
-$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml \
-    run chirpstack-ran-bridge python create-gateway.py --gateway-id 000000000000c0de --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242
+$ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran-bridge.yml run chirpstack-ran-bridge python create-gateway.py --gateway-id 000000000000c0de --tenant-id 52f14cd4-c6f1-4fbd-8f87-4025e1d49242
 
 CHIRPSTACK_GATEWAY_ID="000000000000c0de"
 
@@ -295,6 +296,7 @@ You must have an existing ChirpStack v4 installation or you can install ChirpSta
 
 To run Ran-Bridge you must specify the required parameters listed above.
 Example command below shows the main required parameters and their typical values:
+
 ```
 docker run -d --name=ran-bridge --restart=always \
     -e CHIRPSTACK_API_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOi<...>CI6ImtleSJ9.HF2DwQL9jgUyXG0e5TfgvHpUteguSapeSsIvppIfRDE" \
