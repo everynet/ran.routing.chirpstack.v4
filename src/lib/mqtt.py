@@ -226,7 +226,7 @@ class MQTTClient:
 
             if not self._connection_established.is_set():
                 self._connection_established.set()
-                logger.info("Connection established")
+                logger.info("MQTT connection established")
                 await self.on_connect()
 
             async for message in messages:

@@ -93,9 +93,14 @@ class ChirpstackTrafficRouter:
         rx_info.antenna = 1
 
         location = common_pb2.Location()
-        location.latitude = 0.0
-        location.longitude = 0.0
-        location.altitude = 0.0
+        if uplink.gps:
+            location.latitude = uplink.gps.lat
+            location.longitude = uplink.gps.lng
+            location.altitude = uplink.gps.alt if uplink.gps.alt is not None else 0.0
+        else:
+            location.latitude = 0.0
+            location.longitude = 0.0
+            location.altitude = 0.0
         rx_info.location.MergeFrom(location)
 
         # Assembling TX info

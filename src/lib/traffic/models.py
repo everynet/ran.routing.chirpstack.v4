@@ -20,12 +20,19 @@ class UplinkRadioParams(UpstreamRadio):
     pass
 
 
+class Gps(BaseModel):
+    lat: float
+    lng: float
+    alt: float | None
+
+
 class Uplink(BaseModel):
     uplink_id: int
     context_id: bytes
     used_mic: int
     payload: pylorawan.message.PHYPayload
     radio: UplinkRadioParams
+    gps: Gps | None
 
     class Config:
         arbitrary_types_allowed = True

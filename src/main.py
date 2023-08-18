@@ -194,7 +194,7 @@ async def main(loop):
         client_id=uuid.uuid4().hex,
     )
     tasks.add(asyncio.create_task(chirpstack_mqtt_client.run(stop_event), name="chirpstack_mqtt_client"))
-    logger.info("MQTT client started", task_name="chirpstack_mqtt_client")
+    logger.info("MQTT client task started", task_name="chirpstack_mqtt_client")
 
     gateway_id: str = await get_gateway(chirpstack_api, settings.CHIRPSTACK_GATEWAY_ID)
     logger.info("Using gateway mac", mac=gateway_id)

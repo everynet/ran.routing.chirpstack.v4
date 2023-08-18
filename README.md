@@ -75,7 +75,9 @@ Template with all config variables with their default can be found at [`.env-dis
 | HEALTHCHECK_SERVER_PORT           |          | 9090             | Internal healtcheck http server port http://[host]:[port]/health/live http://[host]:[port]/health/ready                                                                               |
 | LOG_LEVEL                         |          | info             | Logging level. Allowed values: info, warning, error, debug                                                                                                                            |
 
+
 ---
+
 
 ## Deploying ChirpStack and Ran-Bridge with docker-compose
 
@@ -95,7 +97,6 @@ docker-compose -f docker-compose.chirpstack.yml -f docker-compose.chirpstack-ran
 ```
 docker-compose -f docker-compose.chirpstack.yml up -d
 ```
-
 
 ## 3. Create chirpstack API key
 

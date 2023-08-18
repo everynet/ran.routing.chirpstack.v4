@@ -33,6 +33,7 @@ from .models import (
     DownlinkResultStatus,
     DownlinkTiming,
     DownstreamRadio,
+    Gps,
     Uplink,
     UplinkAck,
     UplinkRadioParams,
@@ -326,6 +327,9 @@ class RanTrafficRouter:
                 used_mic=mic,
                 payload=pylorawan.message.PHYPayload.parse(lora_message_bytes),
                 radio=UplinkRadioParams.parse_obj(upstream_message.radio),
+                gps=Gps(lat=upstream_message.gps.lat, lng=upstream_message.gps.lng, alt=upstream_message.gps.alt)
+                if upstream_message.gps is not None
+                else None,
             )
             await self._uplinks_from_ran.put(uplink)
 
