@@ -10,6 +10,7 @@ from ran.routing.core import Core as RANCore
 
 import settings
 from lib import chirpstack, healthcheck, mqtt
+from lib.device_sync import DeviceSync
 from lib.logging_conf import configure_logging
 from lib.ran_hooks import RanDevicesSyncHook, RanMulticastGroupsSyncHook
 from lib.traffic.chirpstack import ChirpstackStatsUpdater, ChirpstackTrafficRouter
@@ -151,18 +152,21 @@ async def main(loop):
         )
 
     # TODO: better sync sequence, without flushing existed devices.
-    logger.info("Cleanup RAN device list")
-    await ran_core.routing_table.delete_all()
-    logger.info("Cleanup done")
 
     logger.info("Cleanup RAN multicast groups")
     mcg = await ran_core.multicast_groups.get_multicast_groups()
     await ran_core.multicast_groups.delete_multicast_groups([group.addr for group in mcg])
-    logger.info("Cleanup done")
+    logger.info("Multicast groups removed (sync after devices)")
 
-    logger.info("Performing initial ChirpStack devices list sync")
-    await ran_chirpstack_devices.sync_from_remote()
-    logger.info("Devices synced")
+    logger.warning("Performing initial ChirpStack devices list sync")
+    try:
+        await DeviceSync(ran=ran_core, device_list=ran_chirpstack_devices).perform_full_sync()
+    except Exception:
+        logger.exception("Device sync failed, terminating bridge...")
+        stop_event.set()
+        await ran_core.close()
+        return
+    logger.warning("Devices sync completed")
 
     logger.info("Performing initial ChirpStack multicast groups list sync")
     await ran_chirpstack_multicast_groups.sync_from_remote()

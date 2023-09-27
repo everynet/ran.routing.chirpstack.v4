@@ -7,9 +7,9 @@ from typing import Any, AsyncIterator, Dict, Optional, Protocol
 from .api import ChirpStackApi
 
 
-@dataclass()
+@dataclass(slots=True)
 class Device:
-    _devices: DeviceList
+    _devices: DeviceList = field(repr=False)
 
     # Device EUI
     dev_eui: str
@@ -97,7 +97,7 @@ class DeviceList(Protocol):
 
     # This method must sync devices with remote
     @abstractmethod
-    async def sync_from_remote(self):
+    async def sync_from_remote(self, trigger_update_hook: bool = True) -> None:
         pass
 
     # Internal methods, required for "Device" interaction
@@ -136,14 +136,14 @@ class BaseChirpstackDeviceList(DeviceList):
         device = Device(_devices=self, dev_eui=dev_eui)
         device_activation = await self._api.get_device_activation(dev_eui)
         if device_activation:
-            device.dev_addr = device_activation.dev_addr
-            device.app_s_key = device_activation.app_s_key
-            device.nwk_s_enc_key = device_activation.nwk_s_enc_key
+            device.dev_addr = device_activation.dev_addr if device_activation.dev_addr else None
+            device.app_s_key = device_activation.app_s_key if device_activation.app_s_key else None
+            device.nwk_s_enc_key = device_activation.nwk_s_enc_key if device_activation.nwk_s_enc_key else None
 
         device_keys = await self._api.get_device_keys(dev_eui)
         if device_keys:
-            device.nwk_key = device_keys.nwk_key
-            device.app_key = device_keys.app_key
+            device.nwk_key = device_keys.nwk_key if device_keys.nwk_key else None
+            device.app_key = device_keys.app_key if device_keys.app_key else None
         return device
 
 
@@ -165,6 +165,9 @@ class ApplicationDeviceList(BaseChirpstackDeviceList):
 
     def get_all_devices(self) -> list[Device]:
         return list(self._dev_eui_to_device.values())
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.get_all_devices()})"
 
     async def _get_matched_device_profiles(self) -> AsyncIterator[Any]:
         if not len(self._tags):
@@ -193,7 +196,7 @@ class ApplicationDeviceList(BaseChirpstackDeviceList):
             if device.device_profile_id in device_profile_ids:
                 yield device
 
-    async def sync_from_remote(self) -> None:
+    async def sync_from_remote(self, trigger_update_hook: bool = True) -> None:
         dev_eui_to_device: Dict[str, Device] = {}
         dev_addr_to_dev_eui: Dict[str, str] = {}
 
@@ -210,15 +213,17 @@ class ApplicationDeviceList(BaseChirpstackDeviceList):
 
             existed_device = self._dev_eui_to_device.get(dev_eui)
             if not existed_device:
-                await self._update_hook.on_device_add(device)
+                if trigger_update_hook:
+                    await self._update_hook.on_device_add(device)
                 continue
 
-            if existed_device != device:
+            if trigger_update_hook and existed_device != device:
                 await self._update_hook.on_device_updated(existed_device, device)
 
-        for dev_eui, device in self._dev_eui_to_device.items():
-            if dev_eui not in dev_eui_to_device:
-                await self._update_hook.on_device_remove(device)
+        if trigger_update_hook:
+            for dev_eui, device in self._dev_eui_to_device.items():
+                if dev_eui not in dev_eui_to_device:
+                    await self._update_hook.on_device_remove(device)
 
         self._dev_eui_to_device = dev_eui_to_device
         self._dev_addr_to_dev_eui = dev_addr_to_dev_eui
@@ -280,6 +285,9 @@ class _BaseMultiListDeviceList(BaseChirpstackDeviceList):
             all_devices.extend(app_list.get_all_devices())
         return all_devices
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({', '.join(repr(c) for c in self._children.values())})"
+
 
 class MultiApplicationDeviceList(_BaseMultiListDeviceList):
     def __init__(
@@ -294,7 +302,7 @@ class MultiApplicationDeviceList(_BaseMultiListDeviceList):
         self._tenant_id = tenant_id
         self._tags = tags if tags is not None else {}
 
-    async def sync_from_remote(self) -> None:
+    async def sync_from_remote(self, trigger_update_hook: bool = True) -> None:
         application_ids = set()
 
         async for application in self._api.get_applications(self._tenant_id):
@@ -309,7 +317,7 @@ class MultiApplicationDeviceList(_BaseMultiListDeviceList):
                 self._children[application.id] = app_dev_list
 
             application_ids.add(application.id)
-            await self._children[application.id].sync_from_remote()
+            await self._children[application.id].sync_from_remote(trigger_update_hook=trigger_update_hook)
 
         # Removing applications lists, which was deleted
         for application_id in list(self._children.keys()):
@@ -328,7 +336,7 @@ class MultiTenantDeviceList(_BaseMultiListDeviceList):
         self._children: Dict[str, MultiApplicationDeviceList] = {}  # type: ignore
         self._tags = tags if tags is not None else {}
 
-    async def sync_from_remote(self) -> None:
+    async def sync_from_remote(self, trigger_update_hook: bool = True) -> None:
         tenants_ids = set()
 
         async for tenant in self._api.get_tenants():
@@ -342,7 +350,7 @@ class MultiTenantDeviceList(_BaseMultiListDeviceList):
                 self._children[tenant.id] = multi_app_dev_list
 
             tenants_ids.add(tenant.id)
-            await self._children[tenant.id].sync_from_remote()
+            await self._children[tenant.id].sync_from_remote(trigger_update_hook=trigger_update_hook)
 
         # Removing applications lists, which was deleted
         for tenant_id in list(self._children.keys()):
