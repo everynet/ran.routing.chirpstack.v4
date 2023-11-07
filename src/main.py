@@ -151,16 +151,21 @@ async def main(loop):
             update_hook=ran_multicast_groups_sync_hook,
         )
 
-    # TODO: better sync sequence, without flushing existed devices.
-
     logger.info("Cleanup RAN multicast groups")
     mcg = await ran_core.multicast_groups.get_multicast_groups()
-    await ran_core.multicast_groups.delete_multicast_groups([group.addr for group in mcg])
-    logger.info("Multicast groups removed (sync after devices)")
+    if len(mcg):
+        await ran_core.multicast_groups.delete_multicast_groups([group.addr for group in mcg])
+        logger.info("Multicast groups removed (sync after devices)")
+    else:
+        logger.info("No multicast group on RAN, skipping clean")
 
     logger.warning("Performing initial ChirpStack devices list sync")
     try:
-        await DeviceSync(ran=ran_core, device_list=ran_chirpstack_devices).perform_full_sync()
+        await DeviceSync(
+            ran=ran_core,
+            device_list=ran_chirpstack_devices,
+            skip_ran_orphaned_devices=settings.SKIP_RAN_ORPHANED_DEVICES,
+        ).perform_full_sync()
     except Exception:
         logger.exception("Device sync failed, terminating bridge...")
         stop_event.set()
